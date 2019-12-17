@@ -168,3 +168,269 @@ module.exports = {
 
 </html>
 ```
+
+如果有一些公共的样式什么的, 可以在此时一并引入到 `index.html` 中来.
+
+由于 Webpack 随后会将 `single-spa.config.js` 输出到 `/dist` 目录, 所以single-spa 的配置文件的路径会是指向 `/dist` 的.
+
+### 注册应用
+
+通过配置 `single-spa.config.js` 注册应用, 可以告诉 single-spa 如何去引导、装载、卸载我们的应用.
+
+在根目录创建一个 `single-spa.config.js` 文件, 内容如下:
+
+```js
+import { registerApplication, start } from 'single-spa';
+
+registerApplication(
+  // 注册的应用的名称
+  'home',
+  // 加载函数
+  () => { },
+  // 活动函数
+  location => location.pathname === '' ||
+    location.pathname === '/' ||
+    location.pathname.startsWith('/home')
+)
+
+start();
+```
+
+该配置注册了一个 home app, 并分别指明了其名称、加载函数、活动函数.
+
+#### 加载函数
+
+`loadingFunction` 必须是一个 async 函数或者其他返回一个 `已决议 Promise` 的函数, 意思也是一样的.
+
+当 loading 一个 app 时, 会首先调用本函数, 从这个角度来看, 定位有些像钩子函数.
+
+#### 活动函数
+
+`activityFunction` 必须是一个返回 boolean 值或其他可判断真假的值的纯函数, 当返回结果为真时, 本应用认为是活动状态.
+
+### Home App
+
+#### 初始化 home app
+
+在 `src/` 目录下新建 `home/` 文件夹, 并且在 `Home/` 目录下新建两个 js 文件:
+
+- home.app.js
+- root.component.js
+
+安装 react 依赖:
+
+```bash
+yarn add react react-dom single-spa-react react-router-dom react-transition-group
+```
+
+#### 定义 home app 生命周期
+
+注册应用以后, single-spa 就已经开始监听应用的引导与状态了, 届时对应的 app 会对此做出响应.
+
+`single-spa-react` 提供了将 react 注册为 `singleSpaReact` 所需的通用生命周期钩子, 可以很方便的注册.
+
+`singleSpaReact` 需要 4 个参数:
+
+1. React 实例
+2. ReactDOM 实例
+3. root 组件
+4. domElementGetter 函数
+
+打开 `src/home/home.app.js` 文件, 内容如下:
+
+```js
+import React from 'react';
+
+import ReactDOM from 'react-dom';
+
+import singleSpaReact from 'single-spa-react';
+
+import Home from './root.component';
+
+// 获取自己的槽
+function domElementGetter () {
+  return document.querySelector('#home');
+}
+
+// 对应三个钩子函数 bootstrap, mount, unmount
+const reactLifecycles = singleSpaReact({
+  React, ReactDOM, rootComponent: Home, domElementGetter
+});
+
+export const bootstrap = [reactLifecycles.bootstrap];
+
+export const mount = [reactLifecycles.mount];
+
+export const unmount = [reactLifecycles.unmount];
+```
+
+#### 构建 React app
+
+打开 `src/home/root.component.js` 文件, 内容如下:
+
+```js
+import React from "react";
+import { TransitionGroup, CSSTransition } from "react-transition-group";
+import {
+  BrowserRouter as Router,
+  Switch,
+  Route,
+  Link,
+  Redirect
+} from "react-router-dom";
+/* you'll need this CSS somewhere
+.fade-enter {
+  opacity: 0;
+  z-index: 1;
+}
+.fade-enter.fade-enter-active {
+  opacity: 1;
+  transition: opacity 250ms ease-in;
+}
+*/
+const AnimationExample = () => (
+  <Router basename="/home">
+    <Route
+      render={({ location }) => (
+        <div style={{position: 'relative', height: '100%'}}>
+          <Route
+            exact
+            path="/"
+            render={() => <Redirect to="/hsl/10/90/50" />}
+          />
+          <ul style={styles.nav}>
+            <NavLink to="/hsl/10/90/50">Red</NavLink>
+            <NavLink to="/hsl/120/100/40">Green</NavLink>
+            <NavLink to="/rgb/33/150/243">Blue</NavLink>
+            <NavLink to="/rgb/240/98/146">Pink</NavLink>
+          </ul>
+          <div style={styles.content}>
+            <TransitionGroup>
+              {/* no different than other usage of
+                CSSTransition, just make sure to pass
+                `location` to `Switch` so it can match
+                the old location as it animates out
+              */}
+              <CSSTransition key={location.key} classNames="fade" timeout={300}>
+                <Switch location={location}>
+                  <Route exact path="/hsl/:h/:s/:l" component={HSL} />
+                  <Route exact path="/rgb/:r/:g/:b" component={RGB} />
+                  {/* Without this `Route`, we would get errors during
+                    the initial transition from `/` to `/hsl/10/90/50`
+                  */}
+                  <Route render={() => <div>Not Found</div>} />
+                </Switch>
+              </CSSTransition>
+            </TransitionGroup>
+          </div>
+        </div>
+      )}
+    />
+  </Router>
+);
+const NavLink = props => (
+  <li style={styles.navItem}>
+    <Link {...props} style={{ color: "inherit" }} />
+  </li>
+);
+const HSL = ({ match: { params } }) => (
+  <div
+    style={{
+      ...styles.fill,
+      ...styles.hsl,
+      background: `hsl(${params.h}, ${params.s}%, ${params.l}%)`
+    }}
+  >
+    hsl({params.h}, {params.s}%, {params.l}%)
+  </div>
+);
+const RGB = ({ match: { params } }) => (
+  <div
+    style={{
+      ...styles.fill,
+      ...styles.rgb,
+      background: `rgb(${params.r}, ${params.g}, ${params.b})`
+    }}
+  >
+    rgb({params.r}, {params.g}, {params.b})
+  </div>
+);
+const styles = {};
+styles.fill = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  top: 0,
+  bottom: 0
+};
+styles.content = {
+  ...styles.fill,
+  top: "40px",
+  textAlign: "center"
+};
+styles.nav = {
+  padding: 0,
+  margin: 0,
+  position: "absolute",
+  top: 0,
+  height: "40px",
+  width: "100%",
+  display: "flex"
+};
+styles.navItem = {
+  textAlign: "center",
+  flex: 1,
+  listStyleType: "none",
+  padding: "10px"
+};
+styles.hsl = {
+  ...styles.fill,
+  color: "white",
+  paddingTop: "20px",
+  fontSize: "30px"
+};
+styles.rgb = {
+  ...styles.fill,
+  color: "white",
+  paddingTop: "20px",
+  fontSize: "30px"
+};
+export default AnimationExample;
+```
+
+#### 定义 loading function
+
+打开根目录下的 `single-spa.config.js` 文件, 修改 loading function:
+
+```js
+import { registerApplication, start } from 'single-spa';
+
+registerApplication(
+  // 注册的应用的名称
+  'home',
+  // 加载函数
+  () => import('./src/home/home.app'), // <- here
+  // 激活函数
+  location => location.pathname === '' ||
+    location.pathname === '/' ||
+    location.pathname.startsWith('/home')
+)
+
+start();
+```
+
+这时候可以尝试启动一下.
+
+Run `yarn start`, 如果一切正常的话, 将会成功启动, 并且看到如下页面:
+
+![home](./imgs/2.png)
+
+### NavBar App
+
+创建和注册 NavBar app 的过程与 Home app 非常的相似. 不同点在于 NavBar 会导出一个带有生命周期的对象并且通过懒加载的方式获取各个应用的对象.
+
+#### 注册 navBar
+
+### AngularJs App
+
+### 完成
