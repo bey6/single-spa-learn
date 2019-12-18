@@ -431,6 +431,266 @@ Run `yarn start`, 如果一切正常的话, 将会成功启动, 并且看到如�
 
 #### 注册 navBar
 
+在 `single-spa.config.js` 添加如下的代码:
+
+```js
+registerApplication(
+  'navBar',
+  () => import('./src/navBar/navBar.app.js').then(module => module.navBar),
+  () => true
+)
+```
+
+`navBar.app.js` 目前还没有, 不过随后就会创建.
+
+由于 navBar 是需要始终显示的, 因此, activityFunction 这里固定返回一个 true.
+
+#### 初始化 navBar app
+
+在 src 目录下新建 navBar 目录, 并在其中分别创建 `navBar.app.js` 与 `root.component.js` 文件.
+
+可以通过在根路径执行以下命令创建:
+
+```bash
+mkdir src/navBar
+touch src/navBar/navBar.app.js src/navBar/root.component.js
+```
+
+#### 定义 navBar app 生命周期
+
+打开 `navBar.app.js` 文件, 贴入下面的代码:
+
+```js
+import React from 'react';
+import ReactDOM from 'react-dom';
+import singleSpaReact from 'single-spa-react';
+import NavBar from './root.component.js';
+function domElementGetter() {
+  return document.getElementById("navBar")
+}
+export const navBar = singleSpaReact({
+  React,
+  ReactDOM,
+  rootComponent: NavBar,
+  domElementGetter,
+})
+```
+
+#### 编写 navBar app 页面
+
+```js
+import React from 'react'
+import {navigateToUrl} from 'single-spa'
+const NavBar = () => (
+  <nav>
+    <div className="nav-wrapper">
+      <a href="/" onClick={navigateToUrl} className="brand-logo">single-spa</a>
+      <ul id="nav-mobile" className="right hide-on-med-and-down">
+        <li><a href="/" onClick={navigateToUrl}>Home</a></li>
+        <li><a href="/angularJS" onClick={navigateToUrl}>AngularJS</a></li>
+      </ul>
+    </div>
+  </nav>
+)
+export default NavBar
+```
+
 ### AngularJs App
 
+#### 初始化 AngularJs app
+
+执行如下命令:
+
+```bash
+mkdir src/angularJS
+cd src/angularJS
+touch angularJS.app.js root.component.js root.template.html routes.js app.module.js gifs.component.js gifs.template.html
+```
+
+为了演示子应用内部路由效果, 这里需要添加一些包:
+
+```bash
+yarn add angular angular-ui-router single-spa-angularjs
+```
+
+#### 注册 AngularJs app
+
+打开 `single-spa.config.js` 文件, 添加如下的代码:
+
+```js
+function pathPrefix(prefix) {
+    return function(location) {
+        return location.pathname.startsWith(prefix);
+    }
+}
+
+registerApplication(
+  'angularJS',
+  () => import ('./src/angularJS/angularJS.app.js'),
+  pathPrefix('/angularJS')
+)
+```
+
+#### 定义 AngularJs app 生命周期
+
+在 `angularJs.app.js` 文件中贴入如下代码:
+
+```js
+import singleSpaAngularJS from 'single-spa-angularjs';
+
+import angular from 'angular';
+
+import './app.module.js';
+import './routes.js';
+
+const domElementGetter = () => document.querySelector('#angularJS');
+
+const angularLifecycles = singleSpaAngularJS({
+  angular,
+  domElementGetter,
+  mainAngularModule: 'angularJS-app',
+  uiRouter: true,
+  preserveGlobal: false,
+});
+
+export const bootstrap = [
+  angularLifecycles.bootstrap,
+];
+
+export const mount = [
+  angularLifecycles.mount,
+];
+
+export const unmount = [
+  angularLifecycles.unmount,
+];
+```
+
+#### 配置 angular 应用
+
+`app.module.js`
+
+```js
+import angular from 'angular';
+import 'angular-ui-router';
+angular
+.module('angularJS-app', ['ui.router']);
+```
+
+`root.component.js`
+
+```js
+import angular from 'angular';
+
+import template from './root.template.html';
+angular
+  .module('angularJS-app')
+  .component('root', {
+    template,
+  });
+```
+
+`root.template.html`
+
+```html
+<div ng-style='vm.styles'>
+  <div class="container">
+    <div class="row">
+      <h4 class="light">
+        Angular 1 example
+      </h4>
+      <p class="caption">
+        This is a sample application written with Angular 1.5 and angular-ui-router.
+      </p>
+    </div>
+    <div>
+    <!-- These Routes will be set up in the routes.js file -->
+      <a class="waves-effect waves-light btn-large" href="/angularJS/gifs" style="margin-right: 10px">
+        Show me cat gifs
+      </a>
+      <a class="waves-effect waves-light btn-large" href="/angularJS" style="margin-right: 10px">
+        Take me home
+      </a>
+    </div>
+    <div class="row">
+      <ui-view />
+    </div>
+  </div>
+</div>
+```
+
+`gifs.component.js`
+
+```js
+import angular from 'angular';
+
+import template from './gifs.template.html';
+angular
+  .module('angularJS-app')
+  .component('gifs', {
+    template,
+    controllerAs: 'vm',
+    controller ($http) {
+      const vm = this;
+      $http
+        .get('https://api.giphy.com/v1/gifs/search?q=cat&api_key=dc6zaTOxFJmzC')
+        .then(response => {
+          vm.gifs = response.data.data;
+        })
+        .catch(err => {
+          setTimeout(() => {
+            throw err;
+          }, 0);
+        });
+    },
+  });
+```
+
+`gif.template.html`
+
+```html
+<div style="padding-top: 20px">
+  <h4 class="light">
+    Cat Gifs gifs
+  </h4>
+  <p>
+  </p>
+  <div ng-repeat="gif in vm.gifs" style="margin: 5px;">
+    <img ng-src="{{gif.images.downsized_medium.url}}" class="col l3">
+  </div>
+</div>
+```
+
+#### 设置 AngularJs app 内部路由
+
+`routes.js`
+
+```js
+import angular from 'angular';
+
+import './gifs.component.js';
+import './root.component.js';
+angular
+  .module('angularJS-app')
+  .config(($stateProvider, $locationProvider) => {
+    $locationProvider.html5Mode({
+      enabled: true,
+      requireBase: false,
+    });
+    $stateProvider
+      .state('root', {
+        url: '/angularJS',
+        template: '<root />',
+      })
+      .state('root.gifs', {
+        url: '/gifs',
+        template: '<gifs />',
+      });
+  });
+```
+
 ### 完成
+
+虽然过程真的好繁琐, 但是不可否认以这种简单的例子来说确实成功了.
+
+执行 `yarn start` 可以查看效果.
